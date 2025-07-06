@@ -1,0 +1,91 @@
+from io import BytesIO
+from typing import Literal
+
+from PIL import Image, ImageFilter
+import eyed3
+import eyed3.id3
+import requests
+import yaml
+import yt_dlp
+
+from config.schema import Config
+from config.ydl_options import YDL_DOWNLOAD_OPTS
+from exceptions import MusicianRaccoonError
+
+
+def generate_cover(url: str, background: str | None, size: Literal["full", "square"]) -> bytes:
+    response = requests.get(url)
+    image_data = response.content
+
+    # Miniatura
+    miniatura = Image.open(BytesIO(image_data))
+
+    # New image.
+    base = Image.new(mode="RGB", size=(1280, 1280), color=background)
+
+    # Resize and paste the image.
+    if size == "square":
+        miniatura = miniatura.resize((2274, 1280))
+        Image.Image.paste(base, miniatura, (-497, 0))
+    elif size == "full":
+        Image.Image.paste(base, miniatura, (0, 280))
+
+    # Save the cover art.
+    cover_data = BytesIO()
+    base.save(cover_data, format="JPEG")
+    return cover_data.getvalue()
+
+
+def metadata_post_hook(filename: str, song: dict, opts: dict | None):
+    cancion = eyed3.load(filename)
+
+    if cancion is None:
+        raise MusicianRaccoonError
+
+    if opts is not None:
+        cover_data = generate_cover(song["thumbnail"], opts["background"], opts["size"])
+    else:
+        cover_data = generate_cover(song["thumbnail"], None, "square")
+
+    cancion.tag.title = song["title"]
+    cancion.tag.artist = (
+        ";".join(song["artists"]) if song.get("artists") is not None else song["channel"]
+    )
+    cancion.tag.album = song.get("album") or song["title"]
+    cancion.tag.images.set(3, cover_data, "image/jpeg")  # type: ignore
+    cancion.tag.save(version=eyed3.id3.ID3_V2_3)  # type: ignore
+
+
+def load_config() -> Config:
+    # Load config
+    with open("config.yaml", "r") as file:
+        data = yaml.safe_load(file)
+
+    return data
+
+
+def main() -> None:
+    # Load config
+    config = load_config()
+    print(config)
+
+    songs = []
+
+    with yt_dlp.YoutubeDL() as ydl:
+        for playlist in config["playlists"]:
+            playlist_data = ydl.extract_info(playlist, download=False)
+
+            if playlist_data is None:
+                continue
+
+            songs += playlist_data["entries"]
+
+    for song in songs:
+        with yt_dlp.YoutubeDL(YDL_DOWNLOAD_OPTS) as ydl:
+            cover_art_opts = config["cover_art_options"].get(song["id"])
+            ydl.add_post_hook(lambda filename: metadata_post_hook(filename, song, cover_art_opts))
+            ydl.process_info(song)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,15 @@
+# Python Environment
+.venv
+
+# Custom config
+config.yml
+config.yaml
+
+# Song/Playlist data
+extracted_data/*
+
+# Default download folder
+downloads
+
+# Python cache
+__pycache__
