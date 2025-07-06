@@ -1,7 +1,6 @@
 from io import BytesIO
-from typing import Literal
 
-from PIL import Image, ImageFilter
+from PIL import Image
 import eyed3
 import eyed3.id3
 import requests
@@ -15,16 +14,18 @@ from exceptions import MusicianRaccoonError
 
 def generate_cover(url: str, options: SongConfig | None) -> bytes:
     if options is not None and options.get("cover_art_replacement") is not None:
-        with yt_dlp.YoutubeDL() as ydl:
-            replacement_info = ydl.extract_info(
-                f"https://www.youtube.com/watch?v={options['cover_art_replacement']}",  # type: ignore shitty linter
-                download=False,
-            )
-            if replacement_info is not None:
-                url = replacement_info["thumbnail"]
-                print(url)
+        replacement_id_or_url = options.get("cover_art_replacement")
+        if len(replacement_id_or_url) == 11:  # type: ignore shitty linter
+            with yt_dlp.YoutubeDL() as ydl:
+                replacement_info = ydl.extract_info(
+                    f"https://www.youtube.com/watch?v={options['cover_art_replacement']}",  # type: ignore shitty linter
+                    download=False,
+                )
+                if replacement_info is not None:
+                    url = replacement_info["thumbnail"]
+        else:
+            url = replacement_id_or_url  # type: ignore shitty linter
 
-    print(url)
     response = requests.get(url)
     image_data = response.content
 
@@ -39,16 +40,24 @@ def generate_cover(url: str, options: SongConfig | None) -> bytes:
         if options is not None
         else "square"
     )
-    print(size)
+    position = options.get("cover_art_style", {}).get("position") if options is not None else None
+
     # New image.
     base = Image.new(mode="RGB", size=(1280, 1280), color=background)
 
     # Resize and paste the image.
     if size == "square":
         miniatura = miniatura.resize((2274, 1280))
-        Image.Image.paste(base, miniatura, (-497, 0))
+        if position is not None:
+            Image.Image.paste(base, miniatura, (position[0], position[1]))
+        else:
+            Image.Image.paste(base, miniatura, (-497, 0))
+
     elif size == "full":
         Image.Image.paste(base, miniatura, (0, 280))
+    elif size == "external":
+        miniatura = miniatura.resize((1280, 1280))
+        Image.Image.paste(base, miniatura, (0, 0))
 
     # Save the cover art.
     cover_data = BytesIO()

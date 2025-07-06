@@ -3,7 +3,8 @@ from typing import Literal, NotRequired, TypedDict
 
 class CoverArtStyle(TypedDict):
     background: NotRequired[str]
-    size: NotRequired[Literal["full", "square"]]
+    size: NotRequired[Literal["full", "square", "external"]]
+    position: NotRequired[list[int]]
 
 
 class SongConfig(TypedDict):
