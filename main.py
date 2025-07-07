@@ -13,18 +13,19 @@ from exceptions import MusicianRaccoonError
 
 
 def generate_cover(url: str, options: SongConfig | None) -> bytes:
-    if options is not None and options.get("cover_art_replacement") is not None:
-        replacement_id_or_url = options.get("cover_art_replacement")
-        if len(replacement_id_or_url) == 11:  # type: ignore shitty linter
+    options = options or {}
+    replacement = options.get("cover_art_replacement")
+    if replacement:
+        if len(replacement) == 11:  # type: ignore shitty linter
             with yt_dlp.YoutubeDL() as ydl:
                 replacement_info = ydl.extract_info(
-                    f"https://www.youtube.com/watch?v={options['cover_art_replacement']}",  # type: ignore shitty linter
+                    f"https://www.youtube.com/watch?v={replacement}",  # type: ignore shitty linter
                     download=False,
                 )
                 if replacement_info is not None:
                     url = replacement_info["thumbnail"]
         else:
-            url = replacement_id_or_url  # type: ignore shitty linter
+            url = replacement  # type: ignore shitty linter
 
     response = requests.get(url)
     image_data = response.content
@@ -32,15 +33,10 @@ def generate_cover(url: str, options: SongConfig | None) -> bytes:
     # Miniatura
     miniatura = Image.open(BytesIO(image_data))
 
-    background = (
-        options.get("cover_art_style", {}).get("background") if options is not None else None
-    )
-    size = (
-        options.get("cover_art_style", {}).get("size", "square")
-        if options is not None
-        else "square"
-    )
-    position = options.get("cover_art_style", {}).get("position") if options is not None else None
+    style = options.get("cover_art_style", {})
+    background = style.get("background")
+    size = style.get("size", "square")
+    position = style.get("position")
 
     # New image.
     base = Image.new(mode="RGB", size=(1280, 1280), color=background)
@@ -48,10 +44,8 @@ def generate_cover(url: str, options: SongConfig | None) -> bytes:
     # Resize and paste the image.
     if size == "square":
         miniatura = miniatura.resize((2274, 1280))
-        if position is not None:
-            Image.Image.paste(base, miniatura, (position[0], position[1]))
-        else:
-            Image.Image.paste(base, miniatura, (-497, 0))
+        pos = (position[0], position[1]) if position else (-497, 0)
+        Image.Image.paste(base, miniatura, pos)
 
     elif size == "full":
         Image.Image.paste(base, miniatura, (0, 280))
@@ -66,6 +60,7 @@ def generate_cover(url: str, options: SongConfig | None) -> bytes:
 
 
 def metadata_post_hook(filename: str, song: dict, options: SongConfig | None):
+    options = options or {}
     cancion = eyed3.load(filename)
 
     if cancion is None:
